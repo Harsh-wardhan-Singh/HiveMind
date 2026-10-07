@@ -4,9 +4,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.agents.agent import Agent
+from backend.banking.bank import MunicipalBank
 from backend.companies.company import Company
 from backend.economy.inflation import InflationTracker
 from backend.economy.market import MarketState, initialize_market_state
+from backend.markets.equities import ShareRegistry
+from backend.markets.order_book import OrderBook
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import District, initialize_districts
 from backend.simulation.metrics import CityMetrics, calculate_metrics
@@ -26,6 +29,10 @@ class WorldState:
     companies: dict[str, Company] = field(default_factory=dict)
     market: MarketState = field(default_factory=initialize_market_state)
     inflation_tracker: InflationTracker = field(default_factory=InflationTracker)
+    bank: MunicipalBank = field(default_factory=MunicipalBank)
+    share_registry: ShareRegistry = field(default_factory=ShareRegistry)
+    order_books: dict[str, OrderBook] = field(default_factory=dict)
+    daily_dividends_paid: float = 0.0
     metrics: CityMetrics = field(default_factory=CityMetrics)
     active_policies: dict[str, Any] = field(default_factory=dict)
 
@@ -38,6 +45,9 @@ class WorldState:
             market=self.market,
             cpi=self.inflation_tracker.current_cpi,
             inflation_rate=self.inflation_tracker.current_inflation_rate,
+            order_books=self.order_books,
+            bank=self.bank,
+            daily_dividends=self.daily_dividends_paid,
         )
 
         # Reset and recalculate district populations
@@ -59,6 +69,7 @@ class WorldState:
             "household_count": len(self.households),
             "company_count": len(self.companies),
             "market": self.market.to_dict(),
+            "bank": self.bank.to_dict(),
             "metrics": self.metrics.to_dict(),
             "active_policies": self.active_policies,
         }

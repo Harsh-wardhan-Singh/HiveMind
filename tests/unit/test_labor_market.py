@@ -87,4 +87,3 @@ def test_payroll_disbursement_transfers_cash():
     assert payroll["c1"] == 200.0
     assert agents["a1"].cash == 300.0
     assert comp.cash == 9800.0
-

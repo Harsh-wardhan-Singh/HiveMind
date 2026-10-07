@@ -22,6 +22,8 @@ from backend.events.event_bus import EventBus
 from backend.events.event_store import EventStore
 from backend.events.event_types import Event, create_event
 from backend.labor.market import match_labor_market, process_daily_payroll
+from backend.markets.order_book import OrderBook
+from backend.markets.trading import execute_daily_equity_trading
 from backend.persistence.db import create_db_engine_and_factory
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import initialize_districts
@@ -186,10 +188,11 @@ class SimulationEngine:
             init_events.append(hh_evt)
             self.event_bus.publish(hh_evt)
 
-        # 3. Form initial Companies across districts
+        # 3. Form initial Companies across districts & issue equities
         comp_configs = [
             (
                 "comp_food_01",
+                "AGRI",
                 "Central Agriculture & Mills",
                 "dist_north",
                 CommodityType.FOOD,
@@ -199,6 +202,7 @@ class SimulationEngine:
             ),
             (
                 "comp_food_02",
+                "FOOD",
                 "Hivemind Fresh Foods",
                 "dist_suburban",
                 CommodityType.FOOD,
@@ -208,6 +212,7 @@ class SimulationEngine:
             ),
             (
                 "comp_food_03",
+                "FARM",
                 "South Valley Farms",
                 "dist_south",
                 CommodityType.FOOD,
@@ -217,6 +222,7 @@ class SimulationEngine:
             ),
             (
                 "comp_house_01",
+                "HOUS",
                 "City Housing Works",
                 "dist_central",
                 CommodityType.HOUSING,
@@ -226,6 +232,7 @@ class SimulationEngine:
             ),
             (
                 "comp_house_02",
+                "BLDR",
                 "Suburban Builders Co.",
                 "dist_suburban",
                 CommodityType.HOUSING,
@@ -235,6 +242,7 @@ class SimulationEngine:
             ),
             (
                 "comp_health_01",
+                "HLTH",
                 "Metropolitan Health Services",
                 "dist_central",
                 CommodityType.HEALTHCARE,
@@ -244,6 +252,7 @@ class SimulationEngine:
             ),
             (
                 "comp_health_02",
+                "CLNC",
                 "Community Medical Clinic",
                 "dist_east",
                 CommodityType.HEALTHCARE,
@@ -253,6 +262,7 @@ class SimulationEngine:
             ),
             (
                 "comp_goods_01",
+                "METL",
                 "Industrial Forge & Tools",
                 "dist_industrial",
                 CommodityType.CONSUMER_GOODS,
@@ -262,6 +272,7 @@ class SimulationEngine:
             ),
             (
                 "comp_goods_02",
+                "APPL",
                 "Hivemind Appliance Co.",
                 "dist_industrial",
                 CommodityType.CONSUMER_GOODS,
@@ -271,7 +282,23 @@ class SimulationEngine:
             ),
         ]
 
-        for c_id, c_name, c_dist, c_comm, c_cap, c_cash, c_wage in comp_configs:
+        # Identify prospective initial shareholders (investors and business owners)
+        investors = [
+            a
+            for a in created_agents
+            if a.role in (RoleType.INVESTOR, RoleType.BUSINESS_OWNER)
+        ]
+
+        for (
+            c_id,
+            c_ticker,
+            c_name,
+            c_dist,
+            c_comm,
+            c_cap,
+            c_cash,
+            c_wage,
+        ) in comp_configs:
             comp = Company(
                 id=c_id,
                 name=c_name,
@@ -281,8 +308,33 @@ class SimulationEngine:
                 cash=c_cash,
                 target_wage=c_wage,
                 inventory=50.0,
+                ticker=c_ticker,
+                shares_outstanding=10_000,
             )
             self.state.companies[c_id] = comp
+
+            # Shareholder allocation: allocate shares to investors, remainder in treasury
+            initial_holders: dict[str, int] = {}
+            allocated = 0
+            for inv in investors:
+                inv_shares = 500
+                initial_holders[inv.id] = inv_shares
+                inv.portfolio[c_ticker] = inv.portfolio.get(c_ticker, 0) + inv_shares
+                allocated += inv_shares
+
+            initial_holders[c_id] = max(0, 10_000 - allocated)
+            self.state.share_registry.issue_shares(
+                company_id=c_id,
+                ticker=c_ticker,
+                total_shares=10_000,
+                initial_holders=initial_holders,
+            )
+
+            # Initialize double auction order book
+            self.state.order_books[c_ticker] = OrderBook(
+                ticker=c_ticker, initial_price=10.0
+            )
+
             c_evt = create_event(
                 run_id=self.run_id,
                 tick=0,
@@ -292,11 +344,24 @@ class SimulationEngine:
             init_events.append(c_evt)
             self.event_bus.publish(c_evt)
 
-        # 4. Initial labor market match
+        # 4. Initial Bank Account Funding
+        for a in created_agents:
+            if a.cash > 2500.0:
+                dep_amt = round(a.cash * 0.25, 2)
+                a.cash -= dep_amt
+                self.state.bank.deposit(a.id, dep_amt)
+                a.bank_deposit = dep_amt
+
+        for comp in self.state.companies.values():
+            c_dep = round(comp.cash * 0.20, 2)
+            comp.cash -= c_dep
+            self.state.bank.deposit(comp.id, c_dep)
+
+        # 5. Initial labor market match
         labor_rng = self.rng.get_stream("labor_init")
         match_labor_market(self.state.agents, self.state.companies, labor_rng)
 
-        # 5. Sync metrics & emit initialization event
+        # 6. Sync metrics & emit initialization event
         self.state.sync_metrics()
 
         init_evt = create_event(
@@ -429,7 +494,49 @@ class SimulationEngine:
             fill_ratios=fill_ratios,
         )
 
-        # 8. Recalculate and Synchronize Macro Telemetry
+        # 8. Financial Markets & Banking Operations (Phase 4)
+        # 8a. Service Bank Interest & Loans
+        self.state.bank.service_daily_banking(
+            agents=self.state.agents,
+            companies=self.state.companies,
+            current_tick=tick,
+        )
+
+        # 8b. Corporate Dividend Declarations & Payouts
+        total_dividends = 0.0
+        for comp in self.state.companies.values():
+            div_paid = self.state.share_registry.declare_and_distribute_dividends(
+                company=comp,
+                agents=self.state.agents,
+                payout_ratio=0.35,
+            )
+            total_dividends += div_paid
+        self.state.daily_dividends_paid = total_dividends
+
+        # 8c. Continuous Double Auction Stock Trading
+        equity_rng = self.rng.get_stream("equity_trading")
+        for ob in self.state.order_books.values():
+            ob.reset_daily_stats()
+
+        trades = execute_daily_equity_trading(
+            order_books=self.state.order_books,
+            registry=self.state.share_registry,
+            agents=self.state.agents,
+            companies=self.state.companies,
+            rng=equity_rng,
+            current_tick=tick,
+        )
+        for tr in trades:
+            day_events.append(
+                create_event(
+                    run_id=self.run_id,
+                    tick=tick,
+                    event_type="EquityTraded",
+                    payload=tr.to_dict(),
+                )
+            )
+
+        # 9. Recalculate and Synchronize Macro Telemetry
         self.state.sync_metrics()
 
         # 9. Emit day completion event

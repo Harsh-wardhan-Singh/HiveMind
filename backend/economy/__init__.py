@@ -29,4 +29,3 @@ __all__ = [
     "initialize_market_state",
     "settle_household_consumption",
 ]
-

@@ -54,4 +54,3 @@ def test_market_clearing_excess_supply_lowers_price():
 
     assert fill_ratios[CommodityType.FOOD] == 1.0
     assert market.prices[CommodityType.FOOD] < initial_food_price
-

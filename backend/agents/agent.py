@@ -42,6 +42,9 @@ class Agent:
     alive: bool = True
     immigrant: bool = False
     birth_generation: int = 0
+    portfolio: dict[str, int] = field(default_factory=dict)
+    bank_deposit: float = 0.0
+    bank_loan: float = 0.0
 
     @property
     def age_years(self) -> int:
@@ -65,6 +68,9 @@ class Agent:
             "cash": round(self.cash, 2),
             "debt": round(self.debt, 2),
             "assets": round(self.assets, 2),
+            "bank_deposit": round(self.bank_deposit, 2),
+            "bank_loan": round(self.bank_loan, 2),
+            "portfolio": dict(self.portfolio),
             "health": round(self.health, 4),
             "education_level": self.education_level,
             "skills": round(self.skills, 4),

@@ -29,6 +29,15 @@ class CityMetrics:
     average_wage: float = 0.0
     company_count: int = 0
 
+    # Financial & Capital Markets Telemetry (Phase 4)
+    stock_market_cap: float = 0.0
+    daily_equity_volume: int = 0
+    daily_dividends_paid: float = 0.0
+    total_bank_deposits: float = 0.0
+    total_bank_loans: float = 0.0
+    bank_reserves: float = 0.0
+    bad_debt_writeoffs: float = 0.0
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_population": self.total_population,
@@ -47,6 +56,13 @@ class CityMetrics:
             "total_corporate_profit": round(self.total_corporate_profit, 2),
             "average_wage": round(self.average_wage, 2),
             "company_count": self.company_count,
+            "stock_market_cap": round(self.stock_market_cap, 2),
+            "daily_equity_volume": self.daily_equity_volume,
+            "daily_dividends_paid": round(self.daily_dividends_paid, 2),
+            "total_bank_deposits": round(self.total_bank_deposits, 2),
+            "total_bank_loans": round(self.total_bank_loans, 2),
+            "bank_reserves": round(self.bank_reserves, 2),
+            "bad_debt_writeoffs": round(self.bad_debt_writeoffs, 2),
         }
 
 
@@ -57,6 +73,9 @@ def calculate_metrics(
     market: MarketState | None = None,
     cpi: float = 100.0,
     inflation_rate: float = 0.0,
+    order_books: dict[str, Any] | None = None,
+    bank: Any | None = None,
+    daily_dividends: float = 0.0,
 ) -> CityMetrics:
     """Calculate aggregate city metrics from current agents, companies, and market telemetry."""
     total = len(agents)
@@ -96,6 +115,7 @@ def calculate_metrics(
     tot_revenue = 0.0
     tot_wages = 0.0
     comp_count = 0
+    tot_mkt_cap = 0.0
 
     if companies:
         comp_count = len(companies)
@@ -104,10 +124,23 @@ def calculate_metrics(
                 tot_profit += comp.daily_profit
                 tot_revenue += comp.daily_revenue
                 tot_wages += comp.daily_expenses
+                share_price = 10.0
+                if order_books and comp.ticker in order_books:
+                    share_price = order_books[comp.ticker].last_price
+                tot_mkt_cap += comp.shares_outstanding * share_price
 
     avg_wage = tot_wages / employed_count if employed_count > 0 else 0.0
     # Daily GDP = Corporate Revenues + Wages Paid
     daily_gdp = tot_revenue + tot_wages
+
+    tot_volume = 0
+    if order_books:
+        tot_volume = sum(ob.daily_volume for ob in order_books.values())
+
+    tot_deposits = getattr(bank, "total_deposits", 0.0) if bank else 0.0
+    tot_loans = getattr(bank, "total_loans", 0.0) if bank else 0.0
+    reserves = getattr(bank, "cash_reserves", 0.0) if bank else 0.0
+    writeoffs = getattr(bank, "accumulated_bad_debt_writeoffs", 0.0) if bank else 0.0
 
     return CityMetrics(
         total_population=total,
@@ -126,4 +159,11 @@ def calculate_metrics(
         total_corporate_profit=tot_profit,
         average_wage=avg_wage,
         company_count=comp_count,
+        stock_market_cap=tot_mkt_cap,
+        daily_equity_volume=tot_volume,
+        daily_dividends_paid=daily_dividends,
+        total_bank_deposits=tot_deposits,
+        total_bank_loans=tot_loans,
+        bank_reserves=reserves,
+        bad_debt_writeoffs=writeoffs,
     )

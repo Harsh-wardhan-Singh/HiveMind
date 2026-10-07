@@ -11,4 +11,3 @@ __all__ = [
     "match_labor_market",
     "process_daily_payroll",
 ]
-

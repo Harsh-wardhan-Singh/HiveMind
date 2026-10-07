@@ -32,4 +32,3 @@ def test_company_production_increases_inventory():
     output = comp.produce([0.8, 0.6])
     assert output > 0.0
     assert comp.inventory == initial_inv + output
-

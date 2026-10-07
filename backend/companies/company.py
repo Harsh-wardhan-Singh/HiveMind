@@ -23,6 +23,10 @@ class Company:
     daily_expenses: float = 0.0
     daily_profit: float = 0.0
     solvency: bool = True
+    ticker: str = ""
+    shares_outstanding: int = 10_000
+    bank_loan: float = 0.0
+    dividend_yield: float = 0.0
 
     def add_employee(self, agent_id: str) -> None:
         if agent_id not in self.employee_ids:
@@ -59,6 +63,10 @@ class Company:
             "inventory": round(self.inventory, 2),
             "target_wage": round(self.target_wage, 2),
             "tfp": round(self.tfp, 4),
+            "ticker": self.ticker,
+            "shares_outstanding": self.shares_outstanding,
+            "bank_loan": round(self.bank_loan, 2),
+            "dividend_yield": round(self.dividend_yield, 4),
             "employee_count": len(self.employee_ids),
             "employee_ids": list(self.employee_ids),
             "daily_revenue": round(self.daily_revenue, 2),
@@ -66,4 +74,3 @@ class Company:
             "daily_profit": round(self.daily_profit, 2),
             "solvency": self.solvency,
         }
-
