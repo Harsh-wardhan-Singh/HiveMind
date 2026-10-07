@@ -8,3 +8,5 @@ dist/
 backend/data/raw/flood_model_training.csv
 backend/ml/flood_impact_model.joblib
 .venv/
+*.md
+!README.md

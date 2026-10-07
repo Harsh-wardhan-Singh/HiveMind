@@ -1,0 +1,28 @@
+# HIVEMIND — Python Virtual Environment Requirements
+
+# --- Core Simulation & Data Modeling ---
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+sqlalchemy>=2.0.28
+python-dotenv>=1.0.1
+numpy>=1.26.4
+
+# --- API Backend & WebSockets (FastAPI Modular Monolith) ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+websockets>=12.0
+httpx>=0.27.0
+
+# --- Operator CLI & Terminal UI ---
+typer[all]>=0.9.0
+rich>=13.7.1
+
+# --- Data Analysis & Report Generation ---
+pandas>=2.2.1
+matplotlib>=3.8.3
+
+# --- Testing, Formatting & Quality Assurance ---
+pytest>=8.0.2
+pytest-cov>=4.1.0
+ruff>=0.3.0
+
