@@ -54,4 +54,3 @@ def generate_personality(rng: random.Random) -> Personality:
         social_trust=sample_truncated_normal(0.55, 0.15),
         ambition=sample_truncated_normal(0.50, 0.18),
     )
-

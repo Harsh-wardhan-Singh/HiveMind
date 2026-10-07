@@ -64,4 +64,3 @@ def evaluate_daily_mortality(
     """
     p_death = calculate_gompertz_makeham_daily_hazard(age_years, health)
     return rng.random() < p_death
-

@@ -54,4 +54,3 @@ def test_personality_to_dict():
     assert len(d) == 8
     assert d["openness"] == 0.5
     assert d["ambition"] == 0.65
-

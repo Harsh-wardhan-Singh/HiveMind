@@ -96,4 +96,3 @@ def test_demographic_strict_determinism(temp_db_url):
     assert len(households_a) == len(households_b)
     for h_id, h_data in households_a.items():
         assert h_data == households_b[h_id]
-

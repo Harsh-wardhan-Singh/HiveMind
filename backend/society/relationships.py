@@ -82,4 +82,3 @@ class RelationshipGraph:
         for neighbors in self._adj.values():
             if agent_id in neighbors:
                 neighbors.remove(agent_id)
-

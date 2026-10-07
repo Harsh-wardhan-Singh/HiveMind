@@ -1,4 +1,4 @@
-"""HIVEMIND Core Simulation Engine (Phase 2 Demographics & Society Version)."""
+"""HIVEMIND Core Simulation Engine (Phase 3 Economic & Market Version)."""
 
 import uuid
 
@@ -7,9 +7,21 @@ from backend.agents.lifecycle import evaluate_daily_mortality
 from backend.agents.personality import generate_personality
 from backend.agents.roles import RoleType
 from backend.app.config import SimulationConfig
+from backend.companies.company import Company
+from backend.economy.consumption import (
+    calculate_household_demands,
+    settle_household_consumption,
+)
+from backend.economy.goods import CommodityType
+from backend.economy.inflation import InflationTracker
+from backend.economy.market import (
+    clear_commodity_market,
+    initialize_market_state,
+)
 from backend.events.event_bus import EventBus
 from backend.events.event_store import EventStore
 from backend.events.event_types import Event, create_event
+from backend.labor.market import match_labor_market, process_daily_payroll
 from backend.persistence.db import create_db_engine_and_factory
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import initialize_districts
@@ -22,7 +34,7 @@ from backend.society.relationships import RelationType
 class SimulationEngine:
     """
     Authoritative simulation orchestrator executing discrete daily ticks.
-    Guarantees deterministic progression, event generation, and periodic snapshotting.
+    Guarantees deterministic progression, economic feedback loops, and periodic snapshotting.
     """
 
     def __init__(self, config: SimulationConfig | None = None):
@@ -45,12 +57,15 @@ class SimulationEngine:
             districts=initialize_districts(),
             agents={},
             households={},
+            companies={},
+            market=initialize_market_state(),
+            inflation_tracker=InflationTracker(),
         )
 
         self._initialize_simulation()
 
     def _initialize_simulation(self) -> None:
-        """Populate initial agents, households, roles, personalities, and persist day 0 baseline."""
+        """Populate initial agents, households, companies, and persist day 0 baseline."""
         self.event_store.record_run(
             run_id=self.run_id,
             seed=self.config.seed,
@@ -60,7 +75,7 @@ class SimulationEngine:
 
         init_events: list[Event] = []
 
-        # Deterministic agent population setup
+        # 1. Deterministic agent population setup
         agent_rng = self.rng.get_stream("agent_init")
         district_ids = list(self.state.districts.keys())
 
@@ -133,7 +148,7 @@ class SimulationEngine:
             init_events.append(evt)
             self.event_bus.publish(evt)
 
-        # Form initial households (cohabiting pairs / single member households)
+        # 2. Form initial households
         hh_rng = self.rng.get_stream("household_init")
         unassigned_agents = list(created_agents)
 
@@ -146,7 +161,6 @@ class SimulationEngine:
             )
             head.household_id = hh.id
 
-            # 40% chance of pairing with another unassigned agent of compatible age
             if unassigned_agents and hh_rng.random() < 0.4:
                 partner = unassigned_agents.pop(0)
                 partner.district_id = head.district_id
@@ -154,7 +168,6 @@ class SimulationEngine:
                 hh.add_member(partner.id)
                 hh.pooled_cash += partner.cash
 
-                # Add spouse relationship edge in social graph
                 self.state.relationships.add_edge(
                     head.id, partner.id, RelationType.SPOUSE, trust=0.9
                 )
@@ -173,7 +186,117 @@ class SimulationEngine:
             init_events.append(hh_evt)
             self.event_bus.publish(hh_evt)
 
-        # Sync metrics & emit initialization event
+        # 3. Form initial Companies across districts
+        comp_configs = [
+            (
+                "comp_food_01",
+                "Central Agriculture & Mills",
+                "dist_north",
+                CommodityType.FOOD,
+                15000.0,
+                30000.0,
+                110.0,
+            ),
+            (
+                "comp_food_02",
+                "Hivemind Fresh Foods",
+                "dist_suburban",
+                CommodityType.FOOD,
+                12000.0,
+                25000.0,
+                105.0,
+            ),
+            (
+                "comp_food_03",
+                "South Valley Farms",
+                "dist_south",
+                CommodityType.FOOD,
+                14000.0,
+                28000.0,
+                100.0,
+            ),
+            (
+                "comp_house_01",
+                "City Housing Works",
+                "dist_central",
+                CommodityType.HOUSING,
+                25000.0,
+                45000.0,
+                130.0,
+            ),
+            (
+                "comp_house_02",
+                "Suburban Builders Co.",
+                "dist_suburban",
+                CommodityType.HOUSING,
+                20000.0,
+                35000.0,
+                125.0,
+            ),
+            (
+                "comp_health_01",
+                "Metropolitan Health Services",
+                "dist_central",
+                CommodityType.HEALTHCARE,
+                30000.0,
+                50000.0,
+                150.0,
+            ),
+            (
+                "comp_health_02",
+                "Community Medical Clinic",
+                "dist_east",
+                CommodityType.HEALTHCARE,
+                18000.0,
+                30000.0,
+                140.0,
+            ),
+            (
+                "comp_goods_01",
+                "Industrial Forge & Tools",
+                "dist_industrial",
+                CommodityType.CONSUMER_GOODS,
+                22000.0,
+                40000.0,
+                120.0,
+            ),
+            (
+                "comp_goods_02",
+                "Hivemind Appliance Co.",
+                "dist_industrial",
+                CommodityType.CONSUMER_GOODS,
+                19000.0,
+                35000.0,
+                115.0,
+            ),
+        ]
+
+        for c_id, c_name, c_dist, c_comm, c_cap, c_cash, c_wage in comp_configs:
+            comp = Company(
+                id=c_id,
+                name=c_name,
+                district_id=c_dist,
+                commodity_type=c_comm,
+                capital=c_cap,
+                cash=c_cash,
+                target_wage=c_wage,
+                inventory=50.0,
+            )
+            self.state.companies[c_id] = comp
+            c_evt = create_event(
+                run_id=self.run_id,
+                tick=0,
+                event_type="CompanyFounded",
+                payload=comp.to_dict(),
+            )
+            init_events.append(c_evt)
+            self.event_bus.publish(c_evt)
+
+        # 4. Initial labor market match
+        labor_rng = self.rng.get_stream("labor_init")
+        match_labor_market(self.state.agents, self.state.companies, labor_rng)
+
+        # 5. Sync metrics & emit initialization event
         self.state.sync_metrics()
 
         init_evt = create_event(
@@ -185,6 +308,7 @@ class SimulationEngine:
                 "seed": self.config.seed,
                 "population": len(self.state.agents),
                 "households": len(self.state.households),
+                "companies": len(self.state.companies),
                 "districts": len(self.state.districts),
                 "metrics": self.state.metrics.to_dict(),
             },
@@ -199,7 +323,9 @@ class SimulationEngine:
     def step(self) -> list[Event]:
         """
         Execute one discrete daily tick (1 tick = 1 day).
-        Advances clock, updates demographics, Gompertz-Makeham mortality, metrics, and logs events.
+        Follows the canonical pipeline: Clock -> Aging -> Labor & Payroll ->
+        Cobb-Douglas Production -> Market Clearing -> CPI & Inflation ->
+        Household Consumption -> Financial Settlement -> Metrics.
         """
         # 1. Advance discrete calendar clock
         tick = self.state.clock.advance(1)
@@ -212,23 +338,24 @@ class SimulationEngine:
                 continue
 
             agent.age_days += 1
-
-            # Micro-fluctuation in health (bounded in [0.0, 1.0])
             health_delta = demo_rng.uniform(-0.0005, 0.0003)
             agent.health = max(0.0, min(1.0, agent.health + health_delta))
 
-            # Evaluate death using Gompertz-Makeham hazard model
             if agent.health <= 0.0 or evaluate_daily_mortality(
                 agent.age_years, agent.health, demo_rng
             ):
                 agent.alive = False
 
-                # Handle household membership removal
+                # Remove from household
                 if agent.household_id and agent.household_id in self.state.households:
                     hh = self.state.households[agent.household_id]
                     hh.remove_member(agent.id)
                     if hh.size == 0:
                         del self.state.households[hh.id]
+
+                # Remove from employer
+                if agent.employer_id and agent.employer_id in self.state.companies:
+                    self.state.companies[agent.employer_id].remove_employee(agent.id)
 
                 # Purge social graph edges
                 self.state.relationships.remove_agent(agent.id)
@@ -255,10 +382,57 @@ class SimulationEngine:
                 day_events.append(evt)
                 self.event_bus.publish(evt)
 
-        # 3. Recalculate district populations and aggregate city telemetry
+        # 3. Labor Market Matching & Daily Payroll Disbursement
+        labor_rng = self.rng.get_stream("labor")
+        new_hires = match_labor_market(
+            self.state.agents, self.state.companies, labor_rng
+        )
+        for emp_id, comp_id in new_hires:
+            day_events.append(
+                create_event(
+                    run_id=self.run_id,
+                    tick=tick,
+                    event_type="AgentEmployed",
+                    payload={"agent_id": emp_id, "company_id": comp_id},
+                )
+            )
+
+        process_daily_payroll(self.state.agents, self.state.companies)
+
+        # 4. Corporate Production Phase (Cobb-Douglas Y = A * K^alpha * L^beta)
+        for comp in self.state.companies.values():
+            if not comp.solvency:
+                continue
+            skills = [
+                self.state.agents[emp_id].skills
+                for emp_id in comp.employee_ids
+                if emp_id in self.state.agents and self.state.agents[emp_id].alive
+            ]
+            comp.produce(skills)
+
+        # 5. Goods Supply/Demand & Walrasian Market Clearing
+        demands = calculate_household_demands(self.state.agents, self.state.households)
+        fill_ratios = clear_commodity_market(
+            market=self.state.market,
+            companies=self.state.companies,
+            household_demands=demands,
+        )
+
+        # 6. Update Laspeyres CPI & Inflation Index
+        self.state.inflation_tracker.update(self.state.market.prices)
+
+        # 7. Household Consumption Settlement & Nutritional Feedback
+        settle_household_consumption(
+            agents=self.state.agents,
+            households=self.state.households,
+            market_prices=self.state.market.prices,
+            fill_ratios=fill_ratios,
+        )
+
+        # 8. Recalculate and Synchronize Macro Telemetry
         self.state.sync_metrics()
 
-        # 4. Emit day completion event
+        # 9. Emit day completion event
         day_evt = create_event(
             run_id=self.run_id,
             tick=tick,
@@ -267,15 +441,16 @@ class SimulationEngine:
                 "tick": tick,
                 "date": self.state.clock.format_date(),
                 "metrics": self.state.metrics.to_dict(),
+                "market": self.state.market.to_dict(),
             },
         )
         day_events.append(day_evt)
         self.event_bus.publish(day_evt)
 
-        # 5. Persist events
+        # 10. Persist events
         self.event_store.append_events(day_events)
 
-        # 6. Periodic snapshotting
+        # 11. Periodic snapshotting
         if tick % self.config.snapshot_interval_days == 0:
             self._save_snapshot()
 

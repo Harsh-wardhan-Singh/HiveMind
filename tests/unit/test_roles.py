@@ -25,4 +25,3 @@ def test_engineer_role():
 def test_fallback_unknown_role():
     role_def = get_role_definition("NON_EXISTENT")
     assert role_def.role_type == RoleType.UNEMPLOYED
-

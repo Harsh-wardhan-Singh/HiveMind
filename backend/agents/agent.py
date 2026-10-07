@@ -73,4 +73,3 @@ class Agent:
             "birth_generation": self.birth_generation,
             "personality": self.personality.to_dict(),
         }
-

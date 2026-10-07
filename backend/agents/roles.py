@@ -117,4 +117,3 @@ ROLE_DEFINITIONS: dict[RoleType, RoleDefinition] = {
 def get_role_definition(role_type: RoleType) -> RoleDefinition:
     """Retrieve official metadata definition for a role."""
     return ROLE_DEFINITIONS.get(role_type, ROLE_DEFINITIONS[RoleType.UNEMPLOYED])
-

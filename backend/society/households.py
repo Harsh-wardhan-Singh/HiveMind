@@ -54,4 +54,3 @@ def create_household(
         member_agent_ids=[head_agent_id],
         pooled_cash=initial_cash,
     )
-
