@@ -1,2 +1,1 @@
 """HIVEMIND Core Application Package."""
-

@@ -32,4 +32,3 @@ class SimulationClock:
     def format_date(self) -> str:
         """Format as Year Y, Day D."""
         return f"Year {self.current_year + 1}, Day {self.day_of_year}"
-

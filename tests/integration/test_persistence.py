@@ -11,7 +11,11 @@ def test_persistence_events_and_snapshots(base_config):
         init_events = event_store.get_events(
             run_id=engine.run_id, start_tick=0, end_tick=0
         )
-        assert len(init_events) == 21  # 20 AgentCreated + 1 SimulationInitialized
+        init_event_types = {e.event_type for e in init_events}
+        assert "AgentCreated" in init_event_types
+        assert "HouseholdFormed" in init_event_types
+        assert "SimulationInitialized" in init_event_types
+        assert len(init_events) >= 21
 
         # Run for 20 days (snapshot interval is 10 days in base_config)
         engine.run(days=20)

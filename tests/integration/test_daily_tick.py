@@ -38,4 +38,3 @@ def test_engine_multi_day_run(base_config):
         assert state.clock.current_tick == 15
         assert state.metrics.alive_population <= 20
         assert state.metrics.alive_population > 0
-

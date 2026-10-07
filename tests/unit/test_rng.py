@@ -44,4 +44,3 @@ def test_rng_reset():
     second_seq = [stream_reset.randint(1, 1000) for _ in range(10)]
 
     assert first_seq == second_seq
-
