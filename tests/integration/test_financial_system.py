@@ -115,4 +115,3 @@ def test_financial_strict_determinism(temp_db_url):
     assert m1.daily_dividends_paid == m2.daily_dividends_paid
     assert m1.gdp == m2.gdp
     assert m1.cpi == m2.cpi
-

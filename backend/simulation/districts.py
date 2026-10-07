@@ -15,6 +15,9 @@ class District:
     transport_connectivity: float
     housing_units: int
     population: int = 0
+    unrest_score: float = 0.0  # Composite unrest index [0.0, 1.0]
+    is_rioting: bool = False  # True when unrest breaches critical riot threshold
+    riot_days: int = 0  # Consecutive days of active rioting
 
     def to_dict(self) -> dict:
         return {
@@ -26,6 +29,9 @@ class District:
             "transport_connectivity": round(self.transport_connectivity, 4),
             "housing_units": self.housing_units,
             "population": self.population,
+            "unrest_score": round(self.unrest_score, 4),
+            "is_rioting": self.is_rioting,
+            "riot_days": self.riot_days,
         }
 
 

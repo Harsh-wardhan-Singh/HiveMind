@@ -14,4 +14,3 @@ __all__ = [
     "Trade",
     "execute_daily_equity_trading",
 ]
-

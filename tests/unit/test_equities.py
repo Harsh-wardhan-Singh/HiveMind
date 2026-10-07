@@ -126,4 +126,3 @@ def test_dividend_distribution_unprofitable_company():
     assert total_div == 0.0
     assert agent1.cash == 500.0
     assert company.cash == 8_000.0
-

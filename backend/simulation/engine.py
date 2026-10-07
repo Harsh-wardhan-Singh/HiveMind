@@ -25,6 +25,14 @@ from backend.labor.market import match_labor_market, process_daily_payroll
 from backend.markets.order_book import OrderBook
 from backend.markets.trading import execute_daily_equity_trading
 from backend.persistence.db import create_db_engine_and_factory
+from backend.politics import (
+    apply_election_result,
+    conduct_election,
+    evaluate_district_unrest,
+    process_active_riots,
+    quell_district_riots,
+    update_all_favorability,
+)
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import initialize_districts
 from backend.simulation.rng import SeededRNG
@@ -119,6 +127,7 @@ class SimulationEngine:
                 role = RoleType.MAYOR
                 edu_level = 3
                 skill = 0.85
+                self.state.government.current_mayor_id = agent_id
 
             district_id = district_ids[agent_rng.randint(0, len(district_ids) - 1)]
             cash = round(agent_rng.uniform(1500.0, 12000.0), 2)
@@ -364,6 +373,15 @@ class SimulationEngine:
         # 6. Sync metrics & emit initialization event
         self.state.sync_metrics()
 
+        govt_evt = create_event(
+            run_id=self.run_id,
+            tick=0,
+            event_type="GovernmentInitialized",
+            payload=self.state.government.to_dict(),
+        )
+        init_events.append(govt_evt)
+        self.event_bus.publish(govt_evt)
+
         init_evt = create_event(
             run_id=self.run_id,
             tick=0,
@@ -487,11 +505,13 @@ class SimulationEngine:
         self.state.inflation_tracker.update(self.state.market.prices)
 
         # 7. Household Consumption Settlement & Nutritional Feedback
+        food_sub = self.state.policy_manager.get_food_subsidy_fraction()
         settle_household_consumption(
             agents=self.state.agents,
             households=self.state.households,
             market_prices=self.state.market.prices,
             fill_ratios=fill_ratios,
+            food_subsidy_rate=food_sub,
         )
 
         # 8. Financial Markets & Banking Operations (Phase 4)
@@ -536,7 +556,195 @@ class SimulationEngine:
                 )
             )
 
-        # 9. Recalculate and Synchronize Macro Telemetry
+        # 9. Municipal Governance, Politics & Policies (Phase 5)
+        # 9a. Tax Assessment & Collection
+        taxes = self.state.government.collect_daily_taxes(
+            agents=self.state.agents,
+            companies=self.state.companies,
+            households=self.state.households,
+            districts=self.state.districts,
+        )
+        if taxes["total_tax_revenue"] > 0:
+            day_events.append(
+                create_event(
+                    run_id=self.run_id,
+                    tick=tick,
+                    event_type="TaxCollected",
+                    payload=taxes,
+                )
+            )
+
+        # 9b. Public Services, Civil Payroll & Infrastructure Maintenance
+        self.state.government.disburse_public_services(
+            agents=self.state.agents,
+            districts=self.state.districts,
+        )
+
+        # 9c. Corruption Leak & Scandal Exposure
+        pol_rng = self.rng.get_stream("politics")
+        sitting_mayor = self.state.agents.get(self.state.government.current_mayor_id)
+        _leak, scandal = self.state.government.process_corruption_leak(
+            rng=pol_rng,
+            sitting_mayor=sitting_mayor,
+            current_tick=tick,
+        )
+        if scandal:
+            scandal_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="CorruptionScandalExposed",
+                payload={
+                    "tick": tick,
+                    "corruption_index": round(
+                        self.state.government.corruption_index, 4
+                    ),
+                    "total_embezzled": round(self.state.government.total_embezzled, 2),
+                    "sitting_mayor_id": self.state.government.current_mayor_id,
+                },
+            )
+            day_events.append(scandal_evt)
+            self.event_bus.publish(scandal_evt)
+
+        # 9d. Policy Lifecycle & Autonomous Governance Interventions
+        expired_pols = self.state.policy_manager.step_policies(
+            current_tick=tick,
+            government=self.state.government,
+            households=self.state.households,
+            agents=self.state.agents,
+            districts=self.state.districts,
+        )
+        for exp_id in expired_pols:
+            day_events.append(
+                create_event(
+                    run_id=self.run_id,
+                    tick=tick,
+                    event_type="PolicyExpired",
+                    payload={"policy_id": exp_id},
+                )
+            )
+
+        new_pols = self.state.policy_manager.evaluate_auto_governance(
+            government=self.state.government,
+            avg_favorability=self.state.metrics.city_favorability,
+            avg_unrest=self.state.metrics.city_unrest,
+            rioting_count=self.state.metrics.rioting_districts_count,
+            cpi=self.state.inflation_tracker.current_cpi,
+            current_tick=tick,
+            rng=pol_rng,
+        )
+        for np in new_pols:
+            np_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="PolicyEnacted",
+                payload=np.to_dict(),
+            )
+            day_events.append(np_evt)
+            self.event_bus.publish(np_evt)
+
+        # 9e. Favorability & Citizen Approval Rating Update
+        avg_fav, _approval_pct = update_all_favorability(
+            agents=self.state.agents,
+            districts=self.state.districts,
+            inflation_rate=self.state.inflation_tracker.current_inflation_rate,
+            corruption_index=self.state.government.corruption_index,
+            has_recent_scandal=scandal,
+        )
+        if avg_fav < 0.35:
+            self.state.government.consecutive_low_favorability_days += 1
+        else:
+            self.state.government.consecutive_low_favorability_days = 0
+
+        # 9f. Civil Unrest & Riots Evaluation
+        unrest_scores, new_riots = evaluate_district_unrest(
+            districts=self.state.districts,
+            agents=self.state.agents,
+            corruption_index=self.state.government.corruption_index,
+        )
+        for r_dist_id in new_riots:
+            r_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="RiotStarted",
+                payload={
+                    "district_id": r_dist_id,
+                    "unrest_score": unrest_scores.get(r_dist_id, 0.0),
+                },
+            )
+            day_events.append(r_evt)
+            self.event_bus.publish(r_evt)
+
+        process_active_riots(
+            districts=self.state.districts,
+            companies=self.state.companies,
+            agents=self.state.agents,
+            government=self.state.government,
+            rng=pol_rng,
+        )
+
+        quelled = quell_district_riots(self.state.districts)
+        for q_dist_id in quelled:
+            q_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="RiotQuelled",
+                payload={"district_id": q_dist_id},
+            )
+            day_events.append(q_evt)
+            self.event_bus.publish(q_evt)
+
+        # 9g. Democratic Elections & Mayoral Succession
+        scheduled_election = (
+            tick - self.state.last_election_tick
+        ) >= self.state.election_interval_days
+        snap_election = (
+            self.state.government.consecutive_low_favorability_days >= 30
+            or len(new_riots) >= 2
+            or self.state.snap_election_requested
+        )
+
+        if scheduled_election or snap_election:
+            election_res = conduct_election(
+                agents=self.state.agents,
+                districts=self.state.districts,
+                government=self.state.government,
+                current_tick=tick,
+                rng=pol_rng,
+            )
+            transferred, message = apply_election_result(
+                result=election_res,
+                government=self.state.government,
+                agents=self.state.agents,
+            )
+            self.state.last_election_tick = tick
+            self.state.snap_election_requested = False
+
+            elec_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="ElectionHeld",
+                payload=election_res.to_dict(),
+            )
+            day_events.append(elec_evt)
+            self.event_bus.publish(elec_evt)
+
+            if transferred:
+                trans_evt = create_event(
+                    run_id=self.run_id,
+                    tick=tick,
+                    event_type="MayoralTransition",
+                    payload={
+                        "tick": tick,
+                        "new_mayor_id": election_res.winner_id,
+                        "new_mayor_name": election_res.winner_name,
+                        "platform": election_res.winner_platform,
+                        "message": message,
+                    },
+                )
+                day_events.append(trans_evt)
+                self.event_bus.publish(trans_evt)
+
+        # 10. Recalculate and Synchronize Macro & Political Telemetry
         self.state.sync_metrics()
 
         # 9. Emit day completion event

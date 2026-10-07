@@ -3,4 +3,3 @@
 from backend.banking.bank import MunicipalBank
 
 __all__ = ["MunicipalBank"]
-

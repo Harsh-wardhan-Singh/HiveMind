@@ -45,6 +45,10 @@ class Agent:
     portfolio: dict[str, int] = field(default_factory=dict)
     bank_deposit: float = 0.0
     bank_loan: float = 0.0
+    favorability: float = 0.5  # Rating of municipal government [0.0, 1.0]
+    unrest: float = 0.0  # Propensity towards civil unrest / protest [0.0, 1.0]
+    public_help_received: float = 0.0  # Recent welfare / subsidy assistance
+    last_tax_paid: float = 0.0  # Most recent daily taxes paid
 
     @property
     def age_years(self) -> int:
@@ -70,6 +74,10 @@ class Agent:
             "assets": round(self.assets, 2),
             "bank_deposit": round(self.bank_deposit, 2),
             "bank_loan": round(self.bank_loan, 2),
+            "favorability": round(self.favorability, 4),
+            "unrest": round(self.unrest, 4),
+            "public_help_received": round(self.public_help_received, 2),
+            "last_tax_paid": round(self.last_tax_paid, 2),
             "portfolio": dict(self.portfolio),
             "health": round(self.health, 4),
             "education_level": self.education_level,

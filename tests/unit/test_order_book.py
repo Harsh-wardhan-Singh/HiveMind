@@ -165,4 +165,3 @@ def test_cancel_order():
     assert cancelled is True
     assert ob.best_bid is None
     assert ob.cancel_order("non_existent") is False
-

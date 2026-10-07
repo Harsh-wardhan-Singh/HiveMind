@@ -47,17 +47,20 @@ def settle_household_consumption(
     households: dict[str, Household],
     market_prices: dict[CommodityType, float],
     fill_ratios: dict[CommodityType, float],
+    food_subsidy_rate: float = 0.0,
 ) -> dict[str, float]:
     """
     Settle household grocery and rent purchases, deduct pooled cash,
     and apply health penalties/benefits from nutrition and healthcare access.
+    Supports municipal food subsidies lowering grocery costs.
     Returns mapping of household_id to total expenditure.
     """
     expenditures: dict[str, float] = {}
     food_fill = fill_ratios.get(CommodityType.FOOD, 1.0)
     health_fill = fill_ratios.get(CommodityType.HEALTHCARE, 1.0)
 
-    food_price = market_prices.get(CommodityType.FOOD, 10.0)
+    raw_food_price = market_prices.get(CommodityType.FOOD, 10.0)
+    food_price = max(1.0, raw_food_price * (1.0 - min(0.50, food_subsidy_rate)))
     rent_price = market_prices.get(CommodityType.HOUSING, 25.0)
     health_price = market_prices.get(CommodityType.HEALTHCARE, 30.0)
 

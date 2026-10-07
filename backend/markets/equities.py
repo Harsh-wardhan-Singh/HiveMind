@@ -140,4 +140,3 @@ class ShareRegistry:
 
     def to_dict(self) -> dict[str, Any]:
         return {ticker: eq.to_dict() for ticker, eq in self.equities.items()}
-

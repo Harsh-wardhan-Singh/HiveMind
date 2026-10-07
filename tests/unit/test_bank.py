@@ -122,4 +122,3 @@ def test_bank_bad_debt_writeoff():
     assert "comp_bankrupt" not in bank.loans
     assert summary["bad_debt_writeoffs"] == 8_000.0
     assert bank.accumulated_bad_debt_writeoffs == 8_000.0
-

@@ -10,6 +10,8 @@ from backend.economy.inflation import InflationTracker
 from backend.economy.market import MarketState, initialize_market_state
 from backend.markets.equities import ShareRegistry
 from backend.markets.order_book import OrderBook
+from backend.politics.government import MunicipalGovernment
+from backend.politics.policies import PolicyManager
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import District, initialize_districts
 from backend.simulation.metrics import CityMetrics, calculate_metrics
@@ -33,11 +35,17 @@ class WorldState:
     share_registry: ShareRegistry = field(default_factory=ShareRegistry)
     order_books: dict[str, OrderBook] = field(default_factory=dict)
     daily_dividends_paid: float = 0.0
+    government: MunicipalGovernment = field(default_factory=MunicipalGovernment)
+    policy_manager: PolicyManager = field(default_factory=PolicyManager)
+    election_interval_days: int = 180
+    last_election_tick: int = 0
+    snap_election_requested: bool = False
     metrics: CityMetrics = field(default_factory=CityMetrics)
     active_policies: dict[str, Any] = field(default_factory=dict)
 
     def sync_metrics(self) -> CityMetrics:
         """Update and recalculate population metrics and district population counts."""
+        self.active_policies = self.policy_manager.to_dict()
         self.metrics = calculate_metrics(
             agents=self.agents,
             household_count=len(self.households),
@@ -48,6 +56,9 @@ class WorldState:
             order_books=self.order_books,
             bank=self.bank,
             daily_dividends=self.daily_dividends_paid,
+            government=self.government,
+            districts=self.districts,
+            active_policies=self.active_policies,
         )
 
         # Reset and recalculate district populations
@@ -70,6 +81,8 @@ class WorldState:
             "company_count": len(self.companies),
             "market": self.market.to_dict(),
             "bank": self.bank.to_dict(),
+            "government": self.government.to_dict(),
+            "policies": self.policy_manager.to_dict(),
             "metrics": self.metrics.to_dict(),
             "active_policies": self.active_policies,
         }
