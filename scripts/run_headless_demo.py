@@ -21,9 +21,7 @@ from backend.simulation.engine import SimulationEngine
 
 def run_demo():
     print("=" * 85)
-    print(
-        " HIVEMIND — MULTI-AGENT CITY: ECONOMY, BANKING & REALPOLITIK (PHASES 1 - 5)"
-    )
+    print(" HIVEMIND — MULTI-AGENT CITY: ECONOMY, BANKING & REALPOLITIK (PHASES 1 - 5)")
     print("=" * 85)
 
     db_path = "hivemind_demo.db"
@@ -101,9 +99,7 @@ def run_demo():
         event_count = len(engine.event_store.get_events(engine.run_id))
 
         print("\n" + "=" * 85)
-        print(
-            " SIMULATION COMPLETE — MACROECONOMIC, BANKING & REALPOLITIK SUMMARY"
-        )
+        print(" SIMULATION COMPLETE — MACROECONOMIC, BANKING & REALPOLITIK SUMMARY")
         print("=" * 85)
         print(f"  Total Days Run:        {final_state.clock.current_tick}")
         print(
@@ -135,16 +131,50 @@ def run_demo():
         print("  POLITICS, GOVERNANCE & CIVIL UNREST TELEMETRY:")
         print(f"  Sitting Mayor ID:      {final_state.government.current_mayor_id}")
         print(f"  Municipal Treasury:    {final_state.government.treasury:,.2f} C")
-        print(f"  Daily Tax Revenue:     {final_state.government.daily_tax_revenue:,.2f} C")
-        print(f"  Public Expenditures:   {final_state.government.daily_expenditures:,.2f} C")
+        print(
+            f"  Daily Tax Revenue:     {final_state.government.daily_tax_revenue:,.2f} C"
+        )
+        print(
+            f"  Public Expenditures:   {final_state.government.daily_expenditures:,.2f} C"
+        )
         print(f"  Corruption Index:      {final_state.government.corruption_index:.4f}")
-        print(f"  Total Embezzled/Graft: {final_state.government.total_embezzled:,.2f} C")
-        print(f"  City Favorability:     {final_state.metrics.city_favorability:.4f} [0.0 - 1.0]")
+        print(
+            f"  Total Embezzled/Graft: {final_state.government.total_embezzled:,.2f} C"
+        )
+        print(
+            f"  City Favorability:     {final_state.metrics.city_favorability:.4f} [0.0 - 1.0]"
+        )
         print(f"  Citizen Approval Rate: {final_state.metrics.approval_rating:.2f}%")
-        print(f"  Civil Unrest Index:    {final_state.metrics.city_unrest:.4f} [0.0 - 1.0]")
+        print(
+            f"  Civil Unrest Index:    {final_state.metrics.city_unrest:.4f} [0.0 - 1.0]"
+        )
         print(f"  Rioting Districts:     {final_state.metrics.rioting_districts_count}")
         print(f"  Total Elections Held:  {final_state.government.total_elections_held}")
-        print(f"  Active Policies Count: {len(final_state.policy_manager.active_policies)}")
+        print(
+            f"  Active Policies Count: {len(final_state.policy_manager.active_policies)}"
+        )
+        print("-" * 85)
+        print("  INFORMATION ECOLOGY, MEDIA, RUMORS & HARMONY (PHASE 6):")
+        print(
+            f"  Society Harmony Index: {final_state.metrics.society_harmony_index:.4f} [0.0 (Collapse) - 1.0 (Utopia)]"
+        )
+        print(
+            f"  Interpersonal Distrust:{final_state.metrics.interpersonal_distrust:.4f} [0.0 - 1.0]"
+        )
+        print(
+            f"  Disinformation Penalty:{final_state.harmony_tracker.disinformation_index:.4f}"
+        )
+        print(f"  Mean Social Trust:     {final_state.metrics.mean_social_trust:.4f}")
+        print(f"  Active Rumors Count:   {final_state.metrics.active_rumors_count}")
+        print(f"  Media Articles Count:  {final_state.metrics.media_articles_count}")
+        if final_state.media_engine.daily_articles:
+            latest_headline = final_state.media_engine.daily_articles[0].headline
+            print(f'  Latest News Headline:  "{latest_headline}"')
+        if final_state.rumor_engine.active_rumors:
+            latest_rumor = next(
+                iter(final_state.rumor_engine.active_rumors.values())
+            ).headline
+            print(f'  Active Rumor Sample:   "{latest_rumor}"')
         print("-" * 85)
         print(
             "  Commodity Prices:      "

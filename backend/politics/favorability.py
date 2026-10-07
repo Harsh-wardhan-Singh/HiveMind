@@ -125,4 +125,3 @@ def update_all_favorability(
     avg_fav = total_fav / len(alive_agents)
     approval_rating = (approving_count / len(alive_agents)) * 100.0
     return round(avg_fav, 4), round(approval_rating, 2)
-

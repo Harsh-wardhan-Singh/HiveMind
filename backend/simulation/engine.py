@@ -21,6 +21,10 @@ from backend.economy.market import (
 from backend.events.event_bus import EventBus
 from backend.events.event_store import EventStore
 from backend.events.event_types import Event, create_event
+from backend.information.observation import (
+    ObservationPacket,
+    generate_agent_observation,
+)
 from backend.labor.market import match_labor_market, process_daily_payroll
 from backend.markets.order_book import OrderBook
 from backend.markets.trading import execute_daily_equity_trading
@@ -744,10 +748,93 @@ class SimulationEngine:
                 day_events.append(trans_evt)
                 self.event_bus.publish(trans_evt)
 
-        # 10. Recalculate and Synchronize Macro & Political Telemetry
+        # 10. Information Ecology, Media, Rumors & Society Harmony (Phase 6)
+        # 10a. News Publication
+        info_rng = self.rng.get_stream("information")
+        news_articles = self.state.media_engine.generate_daily_news(
+            world_state=self.state,
+            rng=info_rng,
+        )
+        for art in news_articles:
+            art_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="NewsPublished",
+                payload=art.to_dict(),
+            )
+            day_events.append(art_evt)
+            self.event_bus.publish(art_evt)
+
+        # 10b. Organic Contextual Rumor Spawning
+        rumor_rng = self.rng.get_stream("rumors")
+        new_rumors = self.state.rumor_engine.trigger_contextual_rumors(
+            world_state=self.state,
+            rng=rumor_rng,
+        )
+        for rm in new_rumors:
+            rm_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="RumorSpawned",
+                payload=rm.to_dict(),
+            )
+            day_events.append(rm_evt)
+            self.event_bus.publish(rm_evt)
+
+        # 10c. Word-of-Mouth Diffusion along Social Graph Edges
+        transmissions = self.state.rumor_engine.diffuse_rumors(
+            agents=self.state.agents,
+            relationships=self.state.relationships,
+            current_tick=tick,
+            rng=rumor_rng,
+        )
+        if transmissions:
+            diff_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="RumorDiffused",
+                payload={
+                    "tick": tick,
+                    "transmissions_count": len(transmissions),
+                    "active_rumors_count": len(self.state.rumor_engine.active_rumors),
+                },
+            )
+            day_events.append(diff_evt)
+            self.event_bus.publish(diff_evt)
+
+        # 10d. Society Harmony Index & Feedback
+        harmony_idx, distrust, unrest_pen = self.state.harmony_tracker.update_harmony(
+            world_state=self.state,
+            active_rumors=self.state.rumor_engine.active_rumors,
+            relationships=self.state.relationships,
+        )
+        # Apply disharmony feedback to citizen unrest and favorability
+        if unrest_pen > 0:
+            for agent in self.state.agents.values():
+                if agent.alive:
+                    agent.unrest = min(1.0, round(agent.unrest + unrest_pen * 0.15, 4))
+                    agent.favorability = max(
+                        0.0, round(agent.favorability - unrest_pen * 0.20, 4)
+                    )
+
+        harm_evt = create_event(
+            run_id=self.run_id,
+            tick=tick,
+            event_type="HarmonyShifted",
+            payload={
+                "tick": tick,
+                "harmony_index": harmony_idx,
+                "interpersonal_distrust": distrust,
+                "unrest_penalty": unrest_pen,
+            },
+        )
+        day_events.append(harm_evt)
+        self.event_bus.publish(harm_evt)
+
+        # 11. Recalculate and Synchronize Macro, Political & Social Telemetry
         self.state.sync_metrics()
 
-        # 9. Emit day completion event
+        # 12. Emit day completion event
         day_evt = create_event(
             run_id=self.run_id,
             tick=tick,
@@ -762,10 +849,10 @@ class SimulationEngine:
         day_events.append(day_evt)
         self.event_bus.publish(day_evt)
 
-        # 10. Persist events
+        # 13. Persist events
         self.event_store.append_events(day_events)
 
-        # 11. Periodic snapshotting
+        # 14. Periodic snapshotting
         if tick % self.config.snapshot_interval_days == 0:
             self._save_snapshot()
 
@@ -777,6 +864,23 @@ class SimulationEngine:
         for _ in range(target_days):
             self.step()
         return self.state
+
+    def get_agent_observation(self, agent_id: str) -> ObservationPacket | None:
+        """Retrieve a bounded, noisy observation packet tailored to an individual agent's horizon."""
+        agent = self.state.agents.get(agent_id)
+        if not agent:
+            return None
+        obs_rng = self.rng.get_stream(f"obs_{agent_id}_{self.state.clock.current_tick}")
+        headlines = [a.to_dict() for a in self.state.media_engine.daily_articles]
+        beliefs = self.state.rumor_engine.agent_beliefs.get(agent_id, {})
+        rumors = [{"topic": t, "belief": b} for t, b in beliefs.items()]
+        return generate_agent_observation(
+            agent=agent,
+            world_state=self.state,
+            rng=obs_rng,
+            headlines=headlines,
+            rumors=rumors,
+        )
 
     def _save_snapshot(self) -> None:
         """Persist current WorldState as a point-in-time snapshot."""

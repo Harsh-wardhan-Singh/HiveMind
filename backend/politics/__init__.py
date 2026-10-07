@@ -43,4 +43,3 @@ __all__ = [
     "quell_district_riots",
     "update_all_favorability",
 ]
-

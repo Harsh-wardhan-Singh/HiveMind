@@ -77,8 +77,18 @@ class RelationshipGraph:
         ]
         for k in keys_to_delete:
             del self._edges[k]
-        if agent_id in self._adj:
-            del self._adj[agent_id]
         for neighbors in self._adj.values():
             if agent_id in neighbors:
                 neighbors.remove(agent_id)
+
+    @property
+    def average_trust(self) -> float:
+        """Calculate mean trust weight across all active social network edges."""
+        if not self._edges:
+            return 0.50
+        return sum(e.trust for e in self._edges.values()) / len(self._edges)
+
+    def modulate_trust(self, delta: float) -> None:
+        """Adjust trust weights across all social edges based on societal harmony or polarization."""
+        for edge in self._edges.values():
+            edge.trust = max(0.05, min(1.0, round(edge.trust + delta, 4)))

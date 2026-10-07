@@ -8,6 +8,9 @@ from backend.banking.bank import MunicipalBank
 from backend.companies.company import Company
 from backend.economy.inflation import InflationTracker
 from backend.economy.market import MarketState, initialize_market_state
+from backend.information.harmony import SocietyHarmonyTracker
+from backend.information.media import MediaEngine
+from backend.information.rumors import RumorEngine
 from backend.markets.equities import ShareRegistry
 from backend.markets.order_book import OrderBook
 from backend.politics.government import MunicipalGovernment
@@ -40,6 +43,11 @@ class WorldState:
     election_interval_days: int = 180
     last_election_tick: int = 0
     snap_election_requested: bool = False
+    media_engine: MediaEngine = field(default_factory=MediaEngine)
+    rumor_engine: RumorEngine = field(default_factory=RumorEngine)
+    harmony_tracker: SocietyHarmonyTracker = field(
+        default_factory=SocietyHarmonyTracker
+    )
     metrics: CityMetrics = field(default_factory=CityMetrics)
     active_policies: dict[str, Any] = field(default_factory=dict)
 
@@ -59,6 +67,10 @@ class WorldState:
             government=self.government,
             districts=self.districts,
             active_policies=self.active_policies,
+            harmony_tracker=self.harmony_tracker,
+            rumors=self.rumor_engine,
+            media=self.media_engine,
+            relationships=self.relationships,
         )
 
         # Reset and recalculate district populations
@@ -83,6 +95,9 @@ class WorldState:
             "bank": self.bank.to_dict(),
             "government": self.government.to_dict(),
             "policies": self.policy_manager.to_dict(),
+            "media": self.media_engine.to_dict(),
+            "rumors": self.rumor_engine.to_dict(),
+            "harmony": self.harmony_tracker.to_dict(),
             "metrics": self.metrics.to_dict(),
             "active_policies": self.active_policies,
         }

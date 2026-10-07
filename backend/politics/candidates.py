@@ -52,4 +52,3 @@ class Candidate:
             "integrity": round(self.integrity, 4),
             "is_incumbent": self.is_incumbent,
         }
-

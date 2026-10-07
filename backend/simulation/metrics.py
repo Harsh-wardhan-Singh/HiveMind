@@ -51,6 +51,13 @@ class CityMetrics:
     active_policies_count: int = 0
     total_elections_held: int = 0
 
+    # Information & Social Ecology Telemetry (Phase 6)
+    society_harmony_index: float = 0.75
+    interpersonal_distrust: float = 0.25
+    active_rumors_count: int = 0
+    media_articles_count: int = 0
+    mean_social_trust: float = 0.50
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_population": self.total_population,
@@ -87,6 +94,11 @@ class CityMetrics:
             "current_mayor_id": self.current_mayor_id,
             "active_policies_count": self.active_policies_count,
             "total_elections_held": self.total_elections_held,
+            "society_harmony_index": round(self.society_harmony_index, 4),
+            "interpersonal_distrust": round(self.interpersonal_distrust, 4),
+            "active_rumors_count": self.active_rumors_count,
+            "media_articles_count": self.media_articles_count,
+            "mean_social_trust": round(self.mean_social_trust, 4),
         }
 
 
@@ -103,6 +115,10 @@ def calculate_metrics(
     government: Any | None = None,
     districts: dict[str, Any] | None = None,
     active_policies: dict[str, Any] | None = None,
+    harmony_tracker: Any | None = None,
+    rumors: Any | None = None,
+    media: Any | None = None,
+    relationships: Any | None = None,
 ) -> CityMetrics:
     """Calculate aggregate city metrics from current agents, companies, market, and politics telemetry."""
     total = len(agents)
@@ -198,6 +214,29 @@ def calculate_metrics(
             1 for d in districts.values() if getattr(d, "is_rioting", False)
         )
 
+    # Information & Harmony metrics
+    harmony_idx = (
+        getattr(harmony_tracker, "harmony_index", 0.75) if harmony_tracker else 0.75
+    )
+    distrust = (
+        getattr(harmony_tracker, "interpersonal_distrust", 0.25)
+        if harmony_tracker
+        else 0.25
+    )
+    active_rumors = (
+        len(getattr(rumors, "active_rumors", {}))
+        if hasattr(rumors, "active_rumors")
+        else (len(rumors) if isinstance(rumors, (dict, list)) else 0)
+    )
+    media_articles = (
+        len(getattr(media, "articles_archive", []))
+        if hasattr(media, "articles_archive")
+        else (len(media) if isinstance(media, (dict, list)) else 0)
+    )
+    social_trust = (
+        getattr(relationships, "average_trust", 0.50) if relationships else 0.50
+    )
+
     return CityMetrics(
         total_population=total,
         alive_population=alive_count,
@@ -233,4 +272,9 @@ def calculate_metrics(
         current_mayor_id=mayor_id,
         active_policies_count=pol_count,
         total_elections_held=elections_count,
+        society_harmony_index=harmony_idx,
+        interpersonal_distrust=distrust,
+        active_rumors_count=active_rumors,
+        media_articles_count=media_articles,
+        mean_social_trust=social_trust,
     )
