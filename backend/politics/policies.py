@@ -1,14 +1,16 @@
-"""HIVEMIND Government Policies, Emergency Interventions & Reform Engine Module."""
+from __future__ import annotations
 
 import random
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.agents.agent import Agent
 from backend.politics.government import MunicipalGovernment
-from backend.simulation.districts import District
 from backend.society.households import Household
+
+if TYPE_CHECKING:
+    from backend.simulation.districts import District
 
 
 class PolicyType(str, Enum):
@@ -132,9 +134,23 @@ class PolicyManager:
                         0.01, round(government.corruption_index * 0.95, 4)
                     )
 
+            elif pol.policy_type == PolicyType.FOOD_SUBSIDY:
+                # Municipal food subsidy co-pay charged to treasury
+                daily_sub_cost = min(government.treasury, pol.magnitude * 150.0)
+                if daily_sub_cost > 0:
+                    government.treasury -= daily_sub_cost
+                    government.daily_welfare_paid += daily_sub_cost
+                    government.daily_expenditures += daily_sub_cost
+                    pol.daily_cost = daily_sub_cost
+
             elif pol.policy_type == PolicyType.AUSTERITY:
-                # Freeze welfare and reduce non-critical expenditures
+                # Austerity caps municipal expenditures and retains reserves
                 pol.daily_cost = 0.0
+                savings = pol.magnitude * 50.0
+                government.treasury += savings
+                government.daily_expenditures = max(
+                    0.0, government.daily_expenditures - savings
+                )
 
         return expired_ids
 

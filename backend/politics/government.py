@@ -1,14 +1,16 @@
-"""HIVEMIND Municipal Government, Public Budget & Taxation Module."""
+from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.agents.agent import Agent
 from backend.agents.roles import RoleType, get_role_definition
 from backend.companies.company import Company
-from backend.simulation.districts import District
 from backend.society.households import Household
+
+if TYPE_CHECKING:
+    from backend.simulation.districts import District
 
 
 @dataclass

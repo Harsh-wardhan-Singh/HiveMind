@@ -16,7 +16,13 @@ class EventStore:
         self._get_session = session_factory
 
     def record_run(
-        self, run_id: str, seed: int, total_days: int, name: str | None = None
+        self,
+        run_id: str,
+        seed: int,
+        total_days: int,
+        name: str | None = None,
+        parent_run_id: str | None = None,
+        fork_tick: int | None = None,
     ) -> None:
         """Register a new simulation run in the database."""
         session: Session = self._get_session()
@@ -27,9 +33,59 @@ class EventStore:
                 total_days=total_days,
                 name=name,
                 status="INITIALIZED",
+                parent_run_id=parent_run_id,
+                fork_tick=fork_tick,
             )
             session.merge(run)
             session.commit()
+        finally:
+            session.close()
+
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
+        """Fetch metadata for a simulation run."""
+        session: Session = self._get_session()
+        try:
+            run = session.query(RunModel).filter(RunModel.run_id == run_id).first()
+            if run:
+                return {
+                    "run_id": run.run_id,
+                    "seed": run.seed,
+                    "name": run.name,
+                    "total_days": run.total_days,
+                    "status": run.status,
+                    "parent_run_id": run.parent_run_id,
+                    "fork_tick": run.fork_tick,
+                    "created_at": (
+                        run.created_at.isoformat() if run.created_at else ""
+                    ),
+                }
+            return None
+        finally:
+            session.close()
+
+    def get_child_runs(self, parent_run_id: str) -> list[dict[str, Any]]:
+        """Fetch all branch runs forked from a parent run."""
+        session: Session = self._get_session()
+        try:
+            runs = (
+                session.query(RunModel)
+                .filter(RunModel.parent_run_id == parent_run_id)
+                .order_by(RunModel.fork_tick.asc())
+                .all()
+            )
+            return [
+                {
+                    "run_id": r.run_id,
+                    "seed": r.seed,
+                    "name": r.name,
+                    "total_days": r.total_days,
+                    "status": r.status,
+                    "parent_run_id": r.parent_run_id,
+                    "fork_tick": r.fork_tick,
+                    "created_at": r.created_at.isoformat() if r.created_at else "",
+                }
+                for r in runs
+            ]
         finally:
             session.close()
 
@@ -133,5 +189,58 @@ class EventStore:
                     "state_blob": snap.state_blob,
                 }
             return None
+        finally:
+            session.close()
+
+    def get_snapshot_at_tick(self, run_id: str, tick: int) -> dict[str, Any] | None:
+        """Retrieve the exact snapshot taken at a specific tick."""
+        session: Session = self._get_session()
+        try:
+            snap = (
+                session.query(SnapshotModel)
+                .filter(SnapshotModel.run_id == run_id, SnapshotModel.tick == tick)
+                .first()
+            )
+            if snap:
+                return {
+                    "snapshot_id": snap.snapshot_id,
+                    "run_id": snap.run_id,
+                    "tick": snap.tick,
+                    "state_blob": snap.state_blob,
+                }
+            return None
+        finally:
+            session.close()
+
+    def get_all_snapshots(self, run_id: str) -> list[dict[str, Any]]:
+        """Retrieve all recorded snapshots for a simulation run in tick order."""
+        session: Session = self._get_session()
+        try:
+            records = (
+                session.query(SnapshotModel)
+                .filter(SnapshotModel.run_id == run_id)
+                .order_by(SnapshotModel.tick.asc())
+                .all()
+            )
+            return [
+                {
+                    "snapshot_id": s.snapshot_id,
+                    "run_id": s.run_id,
+                    "tick": s.tick,
+                    "state_blob": s.state_blob,
+                }
+                for s in records
+            ]
+        finally:
+            session.close()
+
+    def delete_run(self, run_id: str) -> None:
+        """Purge all runs, events, and snapshots associated with run_id."""
+        session: Session = self._get_session()
+        try:
+            session.query(EventModel).filter(EventModel.run_id == run_id).delete()
+            session.query(SnapshotModel).filter(SnapshotModel.run_id == run_id).delete()
+            session.query(RunModel).filter(RunModel.run_id == run_id).delete()
+            session.commit()
         finally:
             session.close()

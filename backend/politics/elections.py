@@ -1,14 +1,16 @@
-"""HIVEMIND Democratic Elections, Balloting & Mayoral Succession Module."""
+from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.agents.agent import Agent
 from backend.agents.roles import RoleType
 from backend.politics.candidates import Candidate, PoliticalPlatform
 from backend.politics.government import MunicipalGovernment
-from backend.simulation.districts import District
+
+if TYPE_CHECKING:
+    from backend.simulation.districts import District
 
 
 @dataclass

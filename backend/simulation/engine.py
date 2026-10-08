@@ -1,6 +1,7 @@
 """HIVEMIND Core Simulation Engine (Phase 3 Economic & Market Version)."""
 
 import uuid
+from typing import Any
 
 from backend.agents.agent import Agent
 from backend.agents.lifecycle import evaluate_daily_mortality
@@ -31,15 +32,14 @@ from backend.llm.provider import OllamaProvider
 from backend.markets.order_book import OrderBook
 from backend.markets.trading import execute_daily_equity_trading
 from backend.persistence.db import create_db_engine_and_factory
-from backend.politics import (
-    apply_election_result,
-    conduct_election,
+from backend.politics.elections import apply_election_result, conduct_election
+from backend.politics.favorability import update_all_favorability
+from backend.politics.policies import ActivePolicy, PolicyType
+from backend.politics.unrest import (
     evaluate_district_unrest,
     process_active_riots,
     quell_district_riots,
-    update_all_favorability,
 )
-from backend.politics.policies import ActivePolicy, PolicyType
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import initialize_districts
 from backend.simulation.rng import SeededRNG
@@ -54,15 +54,24 @@ class SimulationEngine:
     Guarantees deterministic progression, economic feedback loops, and periodic snapshotting.
     """
 
-    def __init__(self, config: SimulationConfig | None = None):
+    def __init__(
+        self,
+        config: SimulationConfig | None = None,
+        event_store: EventStore | None = None,
+    ):
         self.config: SimulationConfig = config or SimulationConfig()
         self.run_id: str = self.config.run_id or f"run_{uuid.uuid4().hex[:8]}"
 
         # Initialize persistence with dedicated DB engine and session factory
-        self._db_engine, session_factory = create_db_engine_and_factory(
-            self.config.database_url
-        )
-        self.event_store: EventStore = EventStore(session_factory=session_factory)
+        if event_store is not None:
+            self.event_store = event_store
+            self._db_engine = None
+        else:
+            self._db_engine, session_factory = create_db_engine_and_factory(
+                self.config.database_url
+            )
+            self.event_store = EventStore(session_factory=session_factory)
+
         self.rng: SeededRNG = SeededRNG(self.config.seed)
         self.event_bus: EventBus = EventBus()
 
@@ -984,14 +993,71 @@ class SimulationEngine:
             rumors=rumors,
         )
 
-    def _save_snapshot(self) -> None:
-        """Persist current WorldState as a point-in-time snapshot."""
-        snapshot_id = f"snap_{self.run_id}_{self.state.clock.current_tick:05d}"
+    def _save_snapshot(self) -> str:
+        """Persist current WorldState as a point-in-time full snapshot."""
+        from backend.persistence.snapshot import serialize_world_state
+
+        tick = self.state.clock.current_tick
+        snapshot_id = f"snap_{self.run_id}_{tick:05d}"
+        blob = serialize_world_state(self.state)
         self.event_store.save_snapshot(
             snapshot_id=snapshot_id,
             run_id=self.run_id,
-            tick=self.state.clock.current_tick,
-            state_blob=self.state.to_dict(),
+            tick=tick,
+            state_blob=blob,
+        )
+        return snapshot_id
+
+    def save_snapshot(self) -> str:
+        """Explicitly capture and persist a point-in-time state snapshot."""
+        return self._save_snapshot()
+
+    def load_snapshot(self, tick: int | None = None) -> bool:
+        """
+        Restore WorldState from a persisted snapshot.
+        If tick is omitted, loads the latest snapshot available.
+        """
+        from backend.persistence.snapshot import deserialize_world_state
+
+        snap = (
+            self.event_store.get_snapshot_at_tick(self.run_id, tick)
+            if tick is not None
+            else self.event_store.get_latest_snapshot(self.run_id)
+        )
+        if not snap or "state_blob" not in snap:
+            return False
+
+        restored_state = deserialize_world_state(
+            snap["state_blob"], new_run_id=self.run_id
+        )
+        # Preserve reference to engine's gateway
+        restored_state.llm_gateway = self.llm_gateway
+        self.state = restored_state
+        return True
+
+    def fork(
+        self,
+        branch_name: str,
+        fork_tick: int | None = None,
+        branch_run_id: str | None = None,
+        policy_overrides: dict[str, Any] | None = None,
+        seed_offset: int = 1000,
+    ) -> "SimulationEngine":
+        """
+        Create a counterfactual branch from this engine at fork_tick (or current tick).
+        """
+        from backend.branching.fork_engine import ForkEngine
+
+        target_tick = (
+            fork_tick if fork_tick is not None else self.state.clock.current_tick
+        )
+        return ForkEngine.fork_from_engine(
+            parent_engine=self,
+            fork_tick=target_tick,
+            branch_name=branch_name,
+            branch_run_id=branch_run_id,
+            policy_overrides=policy_overrides,
+            seed_offset=seed_offset,
         )
 
     def close(self) -> None:

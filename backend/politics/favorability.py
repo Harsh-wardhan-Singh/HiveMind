@@ -1,7 +1,11 @@
-"""HIVEMIND Citizen Favorability & Approval Rating Module."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from backend.agents.agent import Agent
-from backend.simulation.districts import District
+
+if TYPE_CHECKING:
+    from backend.simulation.districts import District
 
 
 def calculate_agent_favorability(

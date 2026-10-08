@@ -1,12 +1,14 @@
-"""HIVEMIND Civil Unrest, Protests & Riot Engine Module."""
+from __future__ import annotations
 
 import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.agents.agent import Agent
 from backend.companies.company import Company
 from backend.politics.government import MunicipalGovernment
-from backend.simulation.districts import District
+
+if TYPE_CHECKING:
+    from backend.simulation.districts import District
 
 
 def evaluate_agent_unrest(

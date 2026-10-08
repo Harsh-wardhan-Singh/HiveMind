@@ -16,6 +16,8 @@ class RunModel(Base):
     name = Column(String, nullable=True)
     total_days = Column(Integer, nullable=False)
     status = Column(String, default="INITIALIZED")
+    parent_run_id = Column(String, nullable=True, index=True)
+    fork_tick = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
