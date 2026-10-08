@@ -11,6 +11,7 @@ from backend.economy.market import MarketState, initialize_market_state
 from backend.information.harmony import SocietyHarmonyTracker
 from backend.information.media import MediaEngine
 from backend.information.rumors import RumorEngine
+from backend.llm.gateway import StrategicLLMGateway
 from backend.markets.equities import ShareRegistry
 from backend.markets.order_book import OrderBook
 from backend.politics.government import MunicipalGovernment
@@ -48,6 +49,7 @@ class WorldState:
     harmony_tracker: SocietyHarmonyTracker = field(
         default_factory=SocietyHarmonyTracker
     )
+    llm_gateway: StrategicLLMGateway = field(default_factory=StrategicLLMGateway)
     metrics: CityMetrics = field(default_factory=CityMetrics)
     active_policies: dict[str, Any] = field(default_factory=dict)
 
@@ -71,6 +73,7 @@ class WorldState:
             rumors=self.rumor_engine,
             media=self.media_engine,
             relationships=self.relationships,
+            llm_gateway=self.llm_gateway,
         )
 
         # Reset and recalculate district populations
@@ -98,6 +101,7 @@ class WorldState:
             "media": self.media_engine.to_dict(),
             "rumors": self.rumor_engine.to_dict(),
             "harmony": self.harmony_tracker.to_dict(),
+            "llm": self.llm_gateway.to_dict(),
             "metrics": self.metrics.to_dict(),
             "active_policies": self.active_policies,
         }

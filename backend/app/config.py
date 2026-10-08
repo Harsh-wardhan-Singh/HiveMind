@@ -38,6 +38,8 @@ class SimulationConfig(BaseSettings):
     snapshot_interval_days: int = 30
     database_url: str = "sqlite:///hivemind.db"
     llm_enabled: bool = False
+    llm_model: str = "qwen2.5:1.5b"
+    llm_base_url: str = "http://127.0.0.1:11434"
 
     city: CityConfig = Field(default_factory=CityConfig)
 

@@ -176,6 +176,16 @@ def run_demo():
             ).headline
             print(f'  Active Rumor Sample:   "{latest_rumor}"')
         print("-" * 85)
+        print("  STRATEGIC LLM REASONING & DETERMINISTIC FALLBACK (PHASE 7):")
+        gateway_status = (
+            f"[LLM: Active ({engine.llm_gateway.provider.model_name})]"
+            if engine.llm_gateway.is_llm_active
+            else "[LLM: Offline (100% Math Fallback)]"
+        )
+        print(f"  Gateway Operational:   {gateway_status}")
+        print(f"  LLM Decisions Taken:   {final_state.metrics.llm_decisions_count}")
+        print(f"  Deterministic Fallback:{final_state.metrics.llm_fallback_count}")
+        print("-" * 85)
         print(
             "  Commodity Prices:      "
             + ", ".join(

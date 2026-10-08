@@ -26,6 +26,8 @@ from backend.information.observation import (
     generate_agent_observation,
 )
 from backend.labor.market import match_labor_market, process_daily_payroll
+from backend.llm.gateway import StrategicLLMGateway
+from backend.llm.provider import OllamaProvider
 from backend.markets.order_book import OrderBook
 from backend.markets.trading import execute_daily_equity_trading
 from backend.persistence.db import create_db_engine_and_factory
@@ -37,6 +39,7 @@ from backend.politics import (
     quell_district_riots,
     update_all_favorability,
 )
+from backend.politics.policies import ActivePolicy, PolicyType
 from backend.simulation.clock import SimulationClock
 from backend.simulation.districts import initialize_districts
 from backend.simulation.rng import SeededRNG
@@ -63,6 +66,21 @@ class SimulationEngine:
         self.rng: SeededRNG = SeededRNG(self.config.seed)
         self.event_bus: EventBus = EventBus()
 
+        # Build gateway from configuration (with automatic fallback to mathematics)
+        provider = None
+        if self.config.llm_enabled:
+            provider = OllamaProvider(
+                base_url=self.config.llm_base_url,
+                model=self.config.llm_model,
+            )
+        gateway = StrategicLLMGateway(
+            provider=provider,
+            model=self.config.llm_model,
+            base_url=self.config.llm_base_url,
+            enabled=self.config.llm_enabled,
+        )
+        self.llm_gateway = gateway
+
         # Build initial world state
         self.state: WorldState = WorldState(
             run_id=self.run_id,
@@ -74,6 +92,7 @@ class SimulationEngine:
             companies={},
             market=initialize_market_state(),
             inflation_tracker=InflationTracker(),
+            llm_gateway=gateway,
         )
 
         self._initialize_simulation()
@@ -497,6 +516,36 @@ class SimulationEngine:
             ]
             comp.produce(skills)
 
+        # 4b. Strategic Corporate Strategy (Phase 7 - LLM Gateway with Mathematical Fallback)
+        for comp in self.state.companies.values():
+            if comp.solvency and (comp.cash < 500.0 or comp.inventory > 100.0):
+                ceo = next(
+                    (
+                        self.state.agents[emp_id]
+                        for emp_id in comp.employee_ids
+                        if emp_id in self.state.agents
+                        and self.state.agents[emp_id].role == RoleType.BUSINESS_OWNER
+                    ),
+                    None,
+                )
+                if not ceo and comp.employee_ids:
+                    first_emp = comp.employee_ids[0]
+                    if first_emp in self.state.agents:
+                        ceo = self.state.agents[first_emp]
+                if ceo:
+                    corp_decision = self.state.llm_gateway.decide_corporate_strategy(
+                        ceo, comp, self.state
+                    )
+                    strat_corp_evt = create_event(
+                        run_id=self.run_id,
+                        tick=tick,
+                        event_type="StrategicDecisionMade",
+                        payload=corp_decision.to_dict(),
+                    )
+                    day_events.append(strat_corp_evt)
+                    self.event_bus.publish(strat_corp_evt)
+                    break
+
         # 5. Goods Supply/Demand & Walrasian Market Clearing
         demands = calculate_household_demands(self.state.agents, self.state.households)
         fill_ratios = clear_commodity_market(
@@ -645,6 +694,59 @@ class SimulationEngine:
             )
             day_events.append(np_evt)
             self.event_bus.publish(np_evt)
+
+        # 9d-1. Strategic Mayoral Deliberation (Phase 7 - Local LLM Gateway with 100% Math Fallback)
+        mayor = self.state.agents.get(self.state.government.current_mayor_id)
+        if (
+            mayor
+            and mayor.alive
+            and (
+                self.state.metrics.rioting_districts_count > 0
+                or self.state.metrics.city_unrest > 0.25
+                or self.state.metrics.inflation_rate > 7.0
+                or self.state.government.corruption_index > 0.08
+                or tick % 30 == 0
+            )
+        ):
+            mayor_decision = self.state.llm_gateway.decide_mayoral_crisis(
+                mayor, self.state
+            )
+            strat_evt = create_event(
+                run_id=self.run_id,
+                tick=tick,
+                event_type="StrategicDecisionMade",
+                payload=mayor_decision.to_dict(),
+            )
+            day_events.append(strat_evt)
+            self.event_bus.publish(strat_evt)
+
+            if mayor_decision.chosen_action != "NO_ACTION":
+                pol_enum = getattr(PolicyType, mayor_decision.chosen_action, None)
+                if pol_enum:
+                    pol_id = f"pol_{mayor_decision.chosen_action.lower()}"
+                    if pol_id not in self.state.policy_manager.active_policies:
+                        mag = (
+                            35.0
+                            if pol_enum == PolicyType.WELFARE_STIMULUS
+                            else (20.0 if pol_enum == PolicyType.PUBLIC_WORKS else 0.25)
+                        )
+                        enacted_pol = ActivePolicy(
+                            policy_id=pol_id,
+                            policy_type=pol_enum,
+                            description=f"Strategic Decree: {mayor_decision.rationale[:60]}",
+                            magnitude=mag,
+                            start_tick=tick,
+                            duration_days=30,
+                        )
+                        self.state.policy_manager.enact_policy(enacted_pol)
+                        np_evt = create_event(
+                            run_id=self.run_id,
+                            tick=tick,
+                            event_type="PolicyEnacted",
+                            payload=enacted_pol.to_dict(),
+                        )
+                        day_events.append(np_evt)
+                        self.event_bus.publish(np_evt)
 
         # 9e. Favorability & Citizen Approval Rating Update
         avg_fav, _approval_pct = update_all_favorability(

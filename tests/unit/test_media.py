@@ -85,4 +85,3 @@ def test_media_engine_archive_cap():
 
     assert len(engine.articles_archive) <= 60
     assert engine.to_dict()["archive_count"] <= 60
-

@@ -57,6 +57,9 @@ class CityMetrics:
     active_rumors_count: int = 0
     media_articles_count: int = 0
     mean_social_trust: float = 0.50
+    llm_decisions_count: int = 0
+    llm_fallback_count: int = 0
+    llm_status: str = "offline"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +102,9 @@ class CityMetrics:
             "active_rumors_count": self.active_rumors_count,
             "media_articles_count": self.media_articles_count,
             "mean_social_trust": round(self.mean_social_trust, 4),
+            "llm_decisions_count": self.llm_decisions_count,
+            "llm_fallback_count": self.llm_fallback_count,
+            "llm_status": self.llm_status,
         }
 
 
@@ -119,6 +125,7 @@ def calculate_metrics(
     rumors: Any | None = None,
     media: Any | None = None,
     relationships: Any | None = None,
+    llm_gateway: Any | None = None,
 ) -> CityMetrics:
     """Calculate aggregate city metrics from current agents, companies, market, and politics telemetry."""
     total = len(agents)
@@ -237,6 +244,15 @@ def calculate_metrics(
         getattr(relationships, "average_trust", 0.50) if relationships else 0.50
     )
 
+    # LLM Gateway telemetry
+    llm_dec = getattr(llm_gateway, "llm_decisions", 0) if llm_gateway else 0
+    llm_fb = getattr(llm_gateway, "fallback_decisions", 0) if llm_gateway else 0
+    llm_st = (
+        "active"
+        if (llm_gateway and getattr(llm_gateway, "is_llm_active", False))
+        else "offline_fallback"
+    )
+
     return CityMetrics(
         total_population=total,
         alive_population=alive_count,
@@ -277,4 +293,7 @@ def calculate_metrics(
         active_rumors_count=active_rumors,
         media_articles_count=media_articles,
         mean_social_trust=social_trust,
+        llm_decisions_count=llm_dec,
+        llm_fallback_count=llm_fb,
+        llm_status=llm_st,
     )

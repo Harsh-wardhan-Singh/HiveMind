@@ -25,4 +25,3 @@ __all__ = [
     "generate_agent_observation",
     "get_agent_information_tier",
 ]
-
