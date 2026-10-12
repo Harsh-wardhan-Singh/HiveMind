@@ -10,3 +10,6 @@ backend/ml/flood_impact_model.joblib
 .venv/
 *.md
 !README.md
+!CLI.md
+*.db
+*.sqlite3

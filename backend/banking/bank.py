@@ -37,6 +37,11 @@ class MunicipalBank:
         return round(self.total_deposits * self.reserve_ratio, 2)
 
     @property
+    def reserves(self) -> float:
+        """Alias for cash_reserves."""
+        return self.cash_reserves
+
+    @property
     def excess_reserves(self) -> float:
         return round(self.cash_reserves - self.reserve_requirement, 2)
 

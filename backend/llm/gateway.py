@@ -36,18 +36,26 @@ class StrategicLLMGateway:
         enabled: bool = True,
     ) -> None:
         self.enabled = enabled
+        self._model = model
         if provider is not None:
             self.provider: LLMProvider = provider
         elif self.enabled:
             self.provider = OllamaProvider(base_url=base_url, model=model)
         else:
-            self.provider = MockProvider()
+            self.provider = MockProvider(model=model)
 
         # Telemetry counters
         self.total_decisions: int = 0
         self.llm_decisions: int = 0
         self.fallback_decisions: int = 0
         self.total_latency_ms: float = 0.0
+
+    @property
+    def model_name(self) -> str:
+        """Name of the active model configured for this gateway."""
+        if hasattr(self, "provider") and hasattr(self.provider, "model_name"):
+            return self.provider.model_name
+        return getattr(self, "_model", "qwen2.5:1.5b")
 
     @property
     def is_llm_active(self) -> bool:

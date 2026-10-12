@@ -19,4 +19,3 @@ __all__ = [
     "generate_ascii_delta_table",
     "generate_comparison_chart_data",
 ]
-
